@@ -18,66 +18,75 @@ var phantom = require('node-phantom');
 
 //connection.end();
 
-var dataSet;
-
-var grabPage = function (url, page, ph) {
-    return page.open(url, function(err, status) {
-
-        console.log('page.open');
-
-        if ( status === "success" ) {
-
-            console.log('status === "success"');
-
-//                page.includeJs("http://ajax.googleapis.com/ajax/libs/jquery/1.6.1/jquery.min.js", function(err) {
-//                console.log('jquery included');
-                    //work here
-//                });
-
-            setTimeout(function() {
-                return page.evaluate(function() {
-
-                        console.log($("head title").html());
-
-//                        var table = $("#releases-table");
-
-//                        $(".indeximg a > img", table).each(function() {
-//                            console.log($(this).attr("title"));
-//                        });
-
-                        $('').each(function(){
-                            dataSet.push({
-                                //lalalakokoko
-                                //adding data
-                            });
-                        });
-                    },
-                    function(err,result) {
-                        if (err) {
-                            console.log(err);
-                            console.log(result);
-                        }
-                        ph.exit();
-                    });
-            }, 3000);
-        }
-    });
-}
 
 
-console.log('start phantom.create');
+
+var pageIndex = 0;
+var url;
+//console.log('start phantom.create');
 phantom.create(function(err, ph) {
-    console.log('phantom.create');
-    return ph.createPage(function(err, page) {
-        //From here on in, we can use PhantomJS' API methods
-        console.log('createPage');
+    var dataSet = [];
+    scanPage(pageIndex);
 
-        page.onConsoleMessage = function(msg) {
-            console.log(msg);
-        };
-        for (var i=1; i <= 10; i++) {
-            grabPage('http://bistracker.org.ua/list.php?page=' + i, page, ph);
+    function scanPage(pageIndex) {
+        // dispose of phantomjs if we're done
+        if (pageIndex > 2) {
+            console.log('the end...');
+            for(key in dataSet)
+            {
+                for (i in dataSet[key])
+                {
+                    console.log(dataSet[key][i].id);
+                    console.log(dataSet[key][i].name);
+                    console.log(dataSet[key][i].createdAt);
+                }
+            }
+            ph.exit();
         }
-//        grabPage('http://bistracker.org.ua', page, ph);
-    });
+        pageIndex++;
+
+        ph.createPage(function(err, page) {
+            //From here on in, we can use PhantomJS' API methods
+
+            url = 'http://bistracker.org.ua/list.php?page=' + pageIndex;
+            return page.open(url, function(err, status) {
+                console.log('open page: ' + url);
+                page.onConsoleMessage = function(msg) {
+                    console.log(msg);
+                };
+
+                if ( status === "success" ) {
+
+                    setTimeout(function() {
+                        console.log(page.evaluate(function() {
+                            var body = $("#body");
+                            var temp = [];
+                            $('.ls-reliz', body).each(function(){
+                                $(this).find('.ls-added a').remove();
+                                var createdAt = $(this).find('.ls-added').text().match(/:([\s\S]+)$/)[0].trim();
+                                var data = {
+                                    'id': $(this).find('.ls-name a').attr('href').match(/[0-9]{1,}$/)[0],
+                                    'name': $(this).find('.ls-name a').text(),
+                                    'createdAt': createdAt.substr(1,createdAt.length-1).trim()
+                                };
+                                temp.push(data);
+//                                console.log(data.id);
+//                                console.log(data.name);
+//                                console.log(data.createdAt);
+                            });
+                            return temp;
+                        }, function(){
+                            scanPage(pageIndex);
+                        }));
+
+                    }, 3000);
+                }
+                else {
+                    console.log('error crawling page ' + url);
+                    console.log(status);
+//                    page.release();
+                }
+            });
+        });
+    }
 });
