@@ -30,8 +30,9 @@ phantom.create(function(err, ph) {
 
     function scanPage(pageIndex) {
         // dispose of phantomjs if we're done
-        if (pageIndex > 2) {
+        if (pageIndex > 1) {
             console.log('the end...');
+            console.log(dataSet);
             for(key in dataSet)
             {
                 for (i in dataSet[key])
@@ -46,11 +47,11 @@ phantom.create(function(err, ph) {
         pageIndex++;
 
         ph.createPage(function(err, page) {
-            //From here on in, we can use PhantomJS' API methods
-
             url = 'http://bistracker.org.ua/list.php?page=' + pageIndex;
             return page.open(url, function(err, status) {
-                console.log('open page: ' + url);
+
+                console.log('crawling page: ' + url);
+
                 page.onConsoleMessage = function(msg) {
                     console.log(msg);
                 };
@@ -58,26 +59,27 @@ phantom.create(function(err, ph) {
                 if ( status === "success" ) {
 
                     setTimeout(function() {
-                        console.log(page.evaluate(function() {
+                        return page.evaluate(function() {
                             var body = $("#body");
                             var temp = [];
                             $('.ls-reliz', body).each(function(){
                                 $(this).find('.ls-added a').remove();
                                 var createdAt = $(this).find('.ls-added').text().match(/:([\s\S]+)$/)[0].trim();
-                                var data = {
+                                temp.push({
                                     'id': $(this).find('.ls-name a').attr('href').match(/[0-9]{1,}$/)[0],
                                     'name': $(this).find('.ls-name a').text(),
                                     'createdAt': createdAt.substr(1,createdAt.length-1).trim()
-                                };
-                                temp.push(data);
+                                });
 //                                console.log(data.id);
 //                                console.log(data.name);
 //                                console.log(data.createdAt);
                             });
                             return temp;
-                        }, function(){
+                        }, function(result){
+                            console.log(result);
+                            dataSet.push(result);
                             scanPage(pageIndex);
-                        }));
+                        });
 
                     }, 3000);
                 }
@@ -88,5 +90,7 @@ phantom.create(function(err, ph) {
                 }
             });
         });
+
     }
+
 });
