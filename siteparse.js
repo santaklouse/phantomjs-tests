@@ -13,42 +13,67 @@ var startDate = new Date();
 var elapsed;
 var totalCount = 0;
 
-console.log('Starting scrawling at: ' + startDate.toLocaleString());
+function htmlEscape(str) {
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+}
+
 
 var addDataToDb = function (data, callback) {
 
+    data = data || [];
     if ( ! !!data.length) return;
 
-    var query = "INSERT INTO example (site_id, name, created_at) VALUES ";
+    var query = "INSERT INTO example (site_id, name, description, created_at) VALUES ";
     var items = [];
+
     for(key in data)
     {
+        if (! !!data[key].length) return false;
         for (i in data[key])
         {
             items.push(
-                "(" + data[key][i].id + ", '" + data[key][i].name + "', '" + data[key][i].createdAt + "')"
+                "(" + data[key][i].id + ", '" + htmlEscape(data[key][i].name) + "', '"+htmlEscape(data[key][i].description)+"', '" + data[key][i].createdAt + "')"
             );
         }
-
     }
-    query += items.join(', ') + ';';
 
+    if ( ! !!items.length)
+        return false;
+
+    query += items.join(', ') + ';';
     connection.query(query, function(err, rows, fields) {
         if (typeof callback == 'function') callback(err, rows, fields);
     });
 }
 
-
-var pageIndex = 0;
+var pageIndex = 13;
 var url;
-//console.log('start phantom.create');
+
 phantom.create(function(err, ph) {
 
+    console.log('Starting scrawling at: ' + startDate.toLocaleString());
     var dataSet = [];
 
     scanPage(pageIndex);
 
     function scanPage(pageIndex, isFinish) {
+
+        var isExit = typeof isFinish != 'undefined' && isFinish;
+
+        // dispose of phantomjs if we're done
+        if (isExit) {
+            elapsed = Date.now() - new Date().setTime(startDate);
+            console.log('finishing crawling...');
+            ph.exit();
+            console.log('Crawling elapsed: ' + elapsed /1000 + ' sec');
+            console.log('Records added: ' + totalCount);
+            return;
+        }
 
         addDataToDb(dataSet, function(err, rows, fields){
             if ( ! err) {
@@ -56,22 +81,16 @@ phantom.create(function(err, ph) {
                 console.log('Count of inserted items: ' + rows.affectedRows);
                 dataSet = [];
                 totalCount += rows.affectedRows;
+                if (isExit)
+                    connection.end();
                 return;
             }
             throw err;
-
         });
 
-        // dispose of phantomjs if we're done
-        if (typeof isFinish != 'undefined' && isFinish) {
-            elapsed = Date.now().toString() - new Date().setTime(startDate.toString());
-            console.log('finishing crawling...');
-            ph.exit();
-            connection.end();
-            console.log('Loading time ' + elapsed + ' msec');
-            console.log('Records added: ' + totalCount);
-            return;
-        }
+        if (isExit)
+            return ph.exit();
+
         pageIndex++;
 
         ph.createPage(function(err, page) {
@@ -87,28 +106,32 @@ phantom.create(function(err, ph) {
                 if ( status === "success" ) {
                     setTimeout(function() {
                         return page.evaluate(function() {
+
                             //TODO: add parsing description and other useful info
                             var body = $("#body");
                             var temp = [];
                             $('.ls-reliz', body).each(function(){
-                                $(this).find('.ls-added a').remove();
+                                $(this).find('.ls-added a[target="_blank"]').remove();
+
                                 var createdAt = $(this).find('.ls-added').text().match(/:([\s\S]+)$/)[0].trim();
                                 temp.push({
                                     'id': $(this).find('.ls-name a').attr('href').match(/[0-9]{1,}$/)[0],
                                     'name': $(this).find('.ls-name a').text(),
+                                    'description': $(this).find('.ls-desc').html(),
                                     'createdAt': createdAt.substr(1,createdAt.length-1).trim()
                                 });
                             });
+//                            console.log($('head title').text());
+//                            console.log($('.ls-reliz', body).length);
                             return temp;
                         }, function(err,result){
-
+                            if ( pageIndex > 14) scanPage(pageIndex, true);
+//                            if ( ! !!result)
                             dataSet.push(result);
-                            if ( ! !!result) scanPage(pageIndex, true);
                             if (err)
                                 console.log(err);
                             scanPage(pageIndex);
                         });
-
                     }, 3000);
                 }
                 else {
