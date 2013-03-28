@@ -1,48 +1,76 @@
 
 var phantom = require('node-phantom');
-//var mysql = require('mysql');
+var mysql = require('mysql');
 
-//var connection = mysql.createConnection({
-//    database : 'testdb',
-//    user     : 'root',
-//    password : '312m16'
-//});
-//connection.connect();
+var connection = mysql.createConnection({
+    database : 'testdb',
+    user     : 'root',
+    password : '312m16'
+});
+connection.connect();
 
-//console.log(client);return;
+var startDate = new Date();
+var elapsed;
+var totalCount = 0;
 
-//connection.query('SELECT 1 + 1 AS solution', function(err, rows, fields) {
-//    if (err) throw err;
-//    console.log('The solution is: ', rows[0].solution);
-//});
+console.log('Starting scrawling at: ' + startDate.toLocaleString());
 
-//connection.end();
+var addDataToDb = function (data, callback) {
 
+    if ( ! !!data.length) return;
 
+    var query = "INSERT INTO example (site_id, name, created_at) VALUES ";
+    var items = [];
+    for(key in data)
+    {
+        for (i in data[key])
+        {
+            items.push(
+                "(" + data[key][i].id + ", '" + data[key][i].name + "', '" + data[key][i].createdAt + "')"
+            );
+        }
+
+    }
+    query += items.join(', ') + ';';
+
+    connection.query(query, function(err, rows, fields) {
+        if (typeof callback == 'function') callback(err, rows, fields);
+    });
+}
 
 
 var pageIndex = 0;
 var url;
 //console.log('start phantom.create');
 phantom.create(function(err, ph) {
+
     var dataSet = [];
+
     scanPage(pageIndex);
 
-    function scanPage(pageIndex) {
-        // dispose of phantomjs if we're done
-        if (pageIndex > 1) {
-            console.log('the end...');
-            console.log(dataSet);
-            for(key in dataSet)
-            {
-                for (i in dataSet[key])
-                {
-                    console.log(dataSet[key][i].id);
-                    console.log(dataSet[key][i].name);
-                    console.log(dataSet[key][i].createdAt);
-                }
+    function scanPage(pageIndex, isFinish) {
+
+        addDataToDb(dataSet, function(err, rows, fields){
+            if ( ! err) {
+                console.log('data inserted to DB successfully!!!');
+                console.log('Count of inserted items: ' + rows.affectedRows);
+                dataSet = [];
+                totalCount += rows.affectedRows;
+                return;
             }
+            throw err;
+
+        });
+
+        // dispose of phantomjs if we're done
+        if (typeof isFinish != 'undefined' && isFinish) {
+            elapsed = Date.now().toString() - new Date().setTime(startDate.toString());
+            console.log('finishing crawling...');
             ph.exit();
+            connection.end();
+            console.log('Loading time ' + elapsed + ' msec');
+            console.log('Records added: ' + totalCount);
+            return;
         }
         pageIndex++;
 
@@ -57,9 +85,9 @@ phantom.create(function(err, ph) {
                 };
 
                 if ( status === "success" ) {
-
                     setTimeout(function() {
                         return page.evaluate(function() {
+                            //TODO: add parsing description and other useful info
                             var body = $("#body");
                             var temp = [];
                             $('.ls-reliz', body).each(function(){
@@ -70,14 +98,14 @@ phantom.create(function(err, ph) {
                                     'name': $(this).find('.ls-name a').text(),
                                     'createdAt': createdAt.substr(1,createdAt.length-1).trim()
                                 });
-//                                console.log(data.id);
-//                                console.log(data.name);
-//                                console.log(data.createdAt);
                             });
                             return temp;
-                        }, function(result){
-                            console.log(result);
+                        }, function(err,result){
+
                             dataSet.push(result);
+                            if ( ! !!result) scanPage(pageIndex, true);
+                            if (err)
+                                console.log(err);
                             scanPage(pageIndex);
                         });
 
@@ -86,7 +114,6 @@ phantom.create(function(err, ph) {
                 else {
                     console.log('error crawling page ' + url);
                     console.log(status);
-//                    page.release();
                 }
             });
         });
