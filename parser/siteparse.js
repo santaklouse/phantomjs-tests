@@ -33,6 +33,7 @@ var addDataToDb = function (data, callback) {
 
     for(key in data)
     {
+        if (! !!data[key]) return false;
         if (! !!data[key].length) return false;
         for (i in data[key])
         {
@@ -51,7 +52,7 @@ var addDataToDb = function (data, callback) {
     });
 }
 
-var pageIndex = 13;
+var pageIndex = 0;
 var url;
 
 phantom.create(function(err, ph) {
@@ -113,21 +114,29 @@ phantom.create(function(err, ph) {
                             $('.ls-reliz', body).each(function(){
                                 $(this).find('.ls-added a[target="_blank"]').remove();
 
-                                var createdAt = $(this).find('.ls-added').text().match(/:([\s\S]+)$/)[0].trim();
+                                var createdAt = $(this).find('.ls-added').text().trim();
+
+                                if ( ! !!createdAt) {
+                                    createdAt = (new Date()).getTime();
+                                }
+                                else {
+                                    createdAt = createdAt.match(/:([\s\S]+)$/)[0].trim().substr(1,createdAt.length-1).trim();
+                                }
+
                                 temp.push({
                                     'id': $(this).find('.ls-name a').attr('href').match(/[0-9]{1,}$/)[0],
                                     'name': $(this).find('.ls-name a').text(),
                                     'description': $(this).find('.ls-desc').html(),
-                                    'createdAt': createdAt.substr(1,createdAt.length-1).trim()
+                                    'createdAt': createdAt
                                 });
                             });
 //                            console.log($('head title').text());
 //                            console.log($('.ls-reliz', body).length);
                             return temp;
                         }, function(err,result){
-                            if ( pageIndex > 14) scanPage(pageIndex, true);
-//                            if ( ! !!result)
-                            dataSet.push(result);
+//                            if ( pageIndex > 14) scanPage(pageIndex, true);
+                            if ( ! !!result) scanPage(pageIndex, true);
+                                dataSet.push(result);
                             if (err)
                                 console.log(err);
                             scanPage(pageIndex);
